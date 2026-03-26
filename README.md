@@ -38,39 +38,61 @@ graph TD
 
 ---
 
-## 🔄 Detailed Workflow
+## 🔍 Deep Dive: Step-by-Step Implementation
 
-### 1. **Data Ingestion & Graph Construction**
-- **Relational Mapping**: Raw CSV tables (Customers, Orders, Deliveries, Invoices, Payments) are parsed and normalized.
-- **Node/Edge Generation**: 
-    - **Nodes**: Entities like `Order:SO-1001` or `Invoice:INV-2001`.
-    - **Edges**: Relationships such as `PLACED_BY`, `BILLED_AS`, and `SETTLED_BY`.
-- **Dual Persistent Storage**: 
-    - `graph.json` stores the adjacency list for rapid frontend rendering.
-    - `graph.db` (SQLite) stores indexed properties for complex SQL-based analytics.
+### 1. Data Modeling & Graph Transformation
+**Logic**: How we turn flat files into a rich web of relationships.
 
-### 2. **AI Query Processing (NL → SQL/Graph)**
-- **Step A: Intent Classification**: The LLM determines if a query is a "Global Aggregate" (SQL-heavy) or a "Relationship Trace" (Graph-heavy).
-- **Step B: Safe Code Generation**: The LLM generates a read-only SQLite query or a NetworkX traversal path.
-- **Step C: Data Grounding**: Results from the database are fed back into the LLM context to ensure "zero-hallucination" answers.
+| Action | Implementation | Why? |
+|---|---|---|
+| **Entity Extraction** | Parsed `customers.csv`, `orders.csv`, and `invoices.csv` into unique Nodes. | Ensures every business object has a unique identity and URI. |
+| **Edge Linking** | Mapped Foreign Keys (e.g., `order_id` in `invoices.csv`) to Graph Edges. | Reconstructs the business "flow" that is often hidden in tabular views. |
+| **Graph Normalization** | Standardized IDs and filled missing relational links. | Prevents isolated "orphan" nodes and ensures a traversable graph. |
 
-### 3. **Visualization & Interaction**
-- **Force Simulation**: The frontend uses a D3-based force-directed layout to organize 1,500+ entities.
-- **Dynamic Neighbor Loading**: Clicking a node triggers a backend request to fetch and render its immediate neighbors, preventing browser lag on massive datasets.
+**The "Why":** Standard ERP systems hide the "Order-to-Cash" journey across dozens of tables. By transforming this into a graph, we enable **multi-hop tracing** (e.g., "Find the payment for the third delivery of this order") which is computationally expensive in SQL but trivial in a graph.
 
 ---
 
-## ⚙️ Technical Implementation Details
+### 2. Hybrid Query Engine (NL → SQL + Graph)
+**Logic**: Translating human language into precise machine queries.
 
-### **LLM Orchestration**
-- **Model**: Llama-3.3-70b-versatile via Groq (chosen for lightning-fast inference).
-- **Few-Shot Prompting**: We inject pre-defined pairs of (Natural Language Question → Correct SQL Query) into the system prompt to guide the LLM's logic.
-- **Streaming SSE**: The backend uses Server-Sent Events to stream tokens to the frontend, providing a high-quality "thinking" experience for the user.
+```mermaid
+sequenceDiagram
+    participant User
+    participant LLM as Llama 3.3 (Groq)
+    participant DB as SQLite / NetworkX
+    
+    User->>LLM: "Which invoices are overdue for ACME?"
+    LLM->>LLM: Identify Intent (SQL Aggregate)
+    LLM->>DB: Execute: SELECT * FROM invoices WHERE...
+    DB-->>LLM: Return: [Row 1, Row 2...]
+    LLM->>User: "ACME has 2 overdue invoices total $5k."
+```
 
-### **Guardrails & Security**
-- **Topic Enforcement**: A pre-flight intent check blocks unrelated questions.
-- **Read-Only Validator**: All generated SQL strings are parsed to ensure they do not contain destructive keywords (`DROP`, `DELETE`, etc.).
-- **Context Resolution**: The system maintains 10-turns of conversation history specifically to resolve entity pronouns (e.g., "how much did *that* customer pay?").
+**Implementation Logic:**
+- **Intent Router**: The backend uses Llama-3 to classify if the question is "Analytical" (needs SQL) or "Structural" (needs Graph Traversal).
+- **Schema Pinning**: We inject the full database schema into the LLM system prompt. This ensures the AI never guesses column names; it only uses what is physically present in `graph.db`.
+- **Validation**: Generated SQL is checked against a "Read-Only" whitelist before execution to prevent malicious injections.
+
+---
+
+### 3. Real-time Streaming & Dashboard Execution
+**Logic**: Providing a premium, responsive user experience.
+
+- **SSE (Server-Sent Events)**: Instead of a spinning loader, we stream tokens word-by-word.
+    - *Implementation*: Uses FastAPI's `StreamingResponse` with an async generator.
+    - *Why*: Large LLM responses (70B model) can take 2-3 seconds. Streaming makes the system feel "alive" and interactive immediately.
+- **Node Expansion Logic**:
+    - *Implementation*: When a node is clicked, the frontend calls `/api/neighbors/{id}`. The backend queries the graph and returns only the 1-hop connections. 
+    - *Why*: Loading 10,000+ nodes at once crashes browsers. Dynamic loading keeps the UI fluid while allowing unlimited exploration.
+
+---
+
+### 4. Advanced Guardrails & Topic Control
+**Logic**: Keeping the AI focused and safe.
+
+- **Domain Classifier**: A first-pass prompt checks if the query is about SAP/O2C. If the user asks about something else, the system responds: *"I am an SAP data specialist and cannot assist with that topic."*
+- **Grounding**: The final answer is **grounded** in the SQL result. If the SQL returns 0 rows, the AI is forbidden from making up an answer.
 
 ---
 
