@@ -3,7 +3,7 @@
 A high-fidelity, interactive platform for exploring SAP business data through graph visualization and a context-aware conversational AI.
 
 ## 🚀 Live Demo & Submission
-- **Local URL**: [http://localhost:5173](http://localhost:5173)
+- **Local URL**: [https://context-graph-system-six.vercel.app/)
 - **Functional Proof**: [Walkthrough & Video Demo](file:///C:/Users/CT_USER/.gemini/antigravity/brain/629a9b18-62e7-43ad-8850-f371dcb13589/walkthrough.md)
 
 ---
