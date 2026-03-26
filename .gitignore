@@ -55,4 +55,3 @@ Thumbs.db
 !.vscode/extensions.json
 .env
 backend/.env
-sessions/
